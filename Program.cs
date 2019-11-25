@@ -6,6 +6,7 @@
 * Rev  Date         By      Purpose
 * ---- ------------ ------------------------------------------------------------------
 * 01   2019-11-02   AG     the initial version. Including Transient/non transient version
+* 02   2019-11-25   AG     Add htk formatted label files to the output 
 *********************************************************************************************/
 
 using System;
@@ -36,14 +37,18 @@ namespace TIMITAnnotationMaker
             string[] annotationFiles = System.IO.Directory.GetFiles(rootFolder, fileExtension, System.IO.SearchOption.AllDirectories);
             Console.WriteLine("Start...");
             int n = 1;
-            foreach(string file in annotationFiles)
+            int samplingRate = 16000; //sample/sec
+            foreach (string file in annotationFiles)
             {
                 Console.Write("["+ n++ +" out of "+annotationFiles.Length+"]"+ file + " is being processed...");
                 string[] annotations = System.IO.File.ReadAllLines(file);
                 string[] modifiedAnnotations = ModifyAnnotations( annotations,dlta);
-                string targetFile = GetTargetFileName(file, outputFolder,rootFolder,out string folder,out string targetWAVFileName);
-                if(!System.IO.Directory.Exists(folder)) System.IO.Directory.CreateDirectory(folder);
+                
+                string[] modifcations_htk_units = ConvertfromSamplesIntoHTKUnits(modifiedAnnotations,samplingRate);
+                string targetFile = GetTargetFileName_Lab(file, outputFolder, rootFolder, out string folder, out string targetWAVFileName,out string labFileName);
+                if (!System.IO.Directory.Exists(folder)) System.IO.Directory.CreateDirectory(folder);
                 System.IO.File.WriteAllLines(targetFile, modifiedAnnotations);
+                System.IO.File.WriteAllLines(labFileName, modifcations_htk_units);
                 string wavFile = file.Substring(0,file.LastIndexOf('.')) + ".WAV";
                 if(!System.IO.File.Exists(targetWAVFileName) && System.IO.File.Exists(wavFile)) System.IO.File.Copy(wavFile, targetWAVFileName);
                 Console.WriteLine("...>End processing " + file);
@@ -51,6 +56,24 @@ namespace TIMITAnnotationMaker
             }
 
             
+        }
+
+        private static string[] ConvertfromSamplesIntoHTKUnits(string[] modifiedAnnotations, int samplingRate)
+        {
+            string[] res = new string[modifiedAnnotations.Length];
+            string[] splitter = { " ", "\t" };
+            double htkConversionFactor = 1e7;
+            double sr = Convert.ToDouble(samplingRate);
+            for(int i=0;i<modifiedAnnotations.Length;i++)
+            {
+                string[] buffer = modifiedAnnotations[i].Split(splitter, StringSplitOptions.RemoveEmptyEntries);
+                double start = double.Parse(buffer[0]) * htkConversionFactor /sr;
+                double end = double.Parse(buffer[1]) * htkConversionFactor / sr ;
+                long s = Convert.ToInt64(start);
+                long e = Convert.ToInt64(end);
+                res[i] = string.Format("{0}\t{1}\t{2}", s, e, buffer[2]);
+            }
+            return res;
         }
 
         private static string GetTargetFileName(string file, string outputFolder, string rootFolder,out string folder, out string targetWAVFileName)
@@ -63,8 +86,18 @@ namespace TIMITAnnotationMaker
             
 
         }
-       
 
+        private static string GetTargetFileName_Lab(string file, string outputFolder, string rootFolder, out string folder, out string targetWAVFileName,out string labFileName)
+        {
+            string baseFileName = System.IO.Path.GetFileNameWithoutExtension(file);
+            folder = outputFolder + System.IO.Path.GetDirectoryName(file).Substring(rootFolder.Length) + @"\";
+            targetWAVFileName = folder + baseFileName + ".WAV";
+            labFileName = folder + baseFileName + ".LAB";
+            string targetFileName = folder + System.IO.Path.GetFileName(file);
+            return targetFileName;
+
+
+        }
         private static string[] ModifyAnnotations( string[] annotations, double dlta)
         {
             List<string> res = new List<string>();
